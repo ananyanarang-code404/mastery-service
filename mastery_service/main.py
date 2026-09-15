@@ -35,24 +35,9 @@ Everything below this docstring is scaffolding, not a solution — feel free
 to delete, restructure, or heavily rewrite it.
 """
 
-from fastapi import FastAPI, Header, HTTPException
-
-from mastery_service.seed_data import TOKENS
+from fastapi import FastAPI
 
 app = FastAPI(title="GenEd Mastery Service — Take-Home")
-
-
-def get_current_identity(authorization: str = Header(default="")) -> dict:
-    """Resolve the Authorization header into {"role", "user_id"}.
-
-    This is deliberately trivial — see seed_data.py for how the token map
-    works. Raise HTTPException(401) for a missing/unknown token.
-    """
-    token = authorization.removeprefix("Bearer ").strip()
-    identity = TOKENS.get(token)
-    if identity is None:
-        raise HTTPException(status_code=401, detail="Invalid or missing token")
-    return identity
 
 
 @app.get("/health")
