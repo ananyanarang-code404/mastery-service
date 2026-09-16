@@ -44,7 +44,7 @@ from sqlalchemy.orm import Session
 
 from mastery_service.access import authorize_student_self, resolve_identity
 from mastery_service.ai_feedback import AIFeedbackError, get_ai_feedback
-from mastery_service.db import Attempt, Mastery, get_db
+from mastery_service.db import Attempt, Mastery, Notification, get_db
 from mastery_service.mastery import apply_attempt
 from mastery_service.seed_data import SKILL_IDS
 
@@ -112,6 +112,18 @@ def submit_attempt(
         db.add(mastery)
 
     mastery.score = apply_attempt(mastery.score, payload.is_correct)
+    crossed_milestone = False
+    if mastery.score > 80 and not mastery.milestone_notified:
+        mastery.milestone_notified = True
+        crossed_milestone = True
+        db.add(
+            Notification(
+                student_id=student_id,
+                skill_id=payload.skill_id,
+                message=f"You crossed the 80% mastery milestone for {payload.skill_id}!",
+            )
+        )
+
     attempt = Attempt(
         student_id=student_id,
         skill_id=payload.skill_id,
@@ -133,6 +145,7 @@ def submit_attempt(
         "skill_id": payload.skill_id,
         "is_correct": payload.is_correct,
         "score": mastery.score,
+        "crossed_milestone": crossed_milestone,
         "feedback": feedback,
     }
 
