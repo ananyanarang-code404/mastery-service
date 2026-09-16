@@ -10,6 +10,17 @@ from mastery_service.db import Base, get_db
 from mastery_service.main import app
 
 
+@pytest.fixture(autouse=True)
+def _fast_ai_feedback(monkeypatch):
+    import mastery_service.main as main_module
+
+    monkeypatch.setattr(
+        main_module,
+        "get_ai_feedback",
+        lambda skill_id, is_correct: f"Feedback for {skill_id}",
+    )
+
+
 @pytest.fixture()
 def db_engine():
     engine = create_engine(

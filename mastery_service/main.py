@@ -43,6 +43,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from mastery_service.access import authorize_student_self, resolve_identity
+from mastery_service.ai_feedback import AIFeedbackError, get_ai_feedback
 from mastery_service.db import Attempt, Mastery, get_db
 from mastery_service.mastery import apply_attempt
 from mastery_service.seed_data import SKILL_IDS
@@ -51,6 +52,7 @@ app = FastAPI(title="GenEd Mastery Service — Take-Home")
 
 RATE_LIMIT_ATTEMPTS = 30
 RATE_LIMIT_WINDOW = timedelta(hours=24)
+FALLBACK_AI_MESSAGE = "We couldn't generate personalized feedback for this attempt — keep practicing!"
 
 
 class AttemptRequest(BaseModel):
@@ -118,12 +120,20 @@ def submit_attempt(
     db.add(attempt)
     db.commit()
 
+    try:
+        feedback = get_ai_feedback(payload.skill_id, payload.is_correct)
+        attempt.ai_feedback = feedback
+        db.commit()
+    except AIFeedbackError:
+        feedback = FALLBACK_AI_MESSAGE
+
     return {
         "attempt_id": attempt.id,
         "student_id": student_id,
         "skill_id": payload.skill_id,
         "is_correct": payload.is_correct,
         "score": mastery.score,
+        "feedback": feedback,
     }
 
 
