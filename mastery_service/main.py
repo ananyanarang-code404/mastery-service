@@ -35,14 +35,67 @@ Everything below this docstring is scaffolding, not a solution — feel free
 to delete, restructure, or heavily rewrite it.
 """
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel, StrictBool
+from sqlalchemy.orm import Session
+
+from mastery_service.access import authorize_student_self, resolve_identity
+from mastery_service.db import Attempt, Mastery, get_db
+from mastery_service.mastery import apply_attempt
+from mastery_service.seed_data import SKILL_IDS
 
 app = FastAPI(title="GenEd Mastery Service — Take-Home")
+
+
+class AttemptRequest(BaseModel):
+    skill_id: str
+    is_correct: StrictBool
 
 
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.post("/students/{student_id}/attempts")
+def submit_attempt(
+    student_id: str,
+    payload: AttemptRequest,
+    db: Session = Depends(get_db),
+    authorization: str = Header(default=""),
+) -> dict:
+    identity = resolve_identity(authorization)
+    authorize_student_self(identity, student_id)
+
+    if payload.skill_id not in SKILL_IDS:
+        raise HTTPException(status_code=422, detail="Unknown skill_id")
+
+    mastery = db.get(Mastery, (student_id, payload.skill_id))
+    if mastery is None:
+        mastery = Mastery(
+            student_id=student_id,
+            skill_id=payload.skill_id,
+            score=0,
+            milestone_notified=False,
+        )
+        db.add(mastery)
+
+    mastery.score = apply_attempt(mastery.score, payload.is_correct)
+    attempt = Attempt(
+        student_id=student_id,
+        skill_id=payload.skill_id,
+        is_correct=payload.is_correct,
+    )
+    db.add(attempt)
+    db.commit()
+
+    return {
+        "attempt_id": attempt.id,
+        "student_id": student_id,
+        "skill_id": payload.skill_id,
+        "is_correct": payload.is_correct,
+        "score": mastery.score,
+    }
 
 
 # TODO: POST /students/{student_id}/attempts

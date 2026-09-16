@@ -8,8 +8,10 @@ tests/conftest.py); this module is not involved in that path.
 
 from datetime import datetime, timezone
 
+from collections.abc import Iterator
+
 from sqlalchemy import Boolean, DateTime, Integer, String, Text, create_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 DATABASE_URL = "sqlite:///mastery.db"
 
@@ -47,7 +49,7 @@ class Mastery(Base):
     score: Mapped[int] = mapped_column(Integer, default=0)
     milestone_notified: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
 
@@ -67,6 +69,18 @@ class Notification(Base):
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+
+
+def get_db() -> Iterator[Session]:
+    """FastAPI dependency: yield a scoped session for one request.
+
+    Tests override this dependency to point at their in-memory DB.
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def create_tables() -> None:
