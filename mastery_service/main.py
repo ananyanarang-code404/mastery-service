@@ -35,8 +35,11 @@ Everything below this docstring is scaffolding, not a solution — feel free
 to delete, restructure, or heavily rewrite it.
 """
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, StrictBool
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from mastery_service.access import authorize_student_self, resolve_identity
@@ -46,10 +49,30 @@ from mastery_service.seed_data import SKILL_IDS
 
 app = FastAPI(title="GenEd Mastery Service — Take-Home")
 
+RATE_LIMIT_ATTEMPTS = 30
+RATE_LIMIT_WINDOW = timedelta(hours=24)
+
 
 class AttemptRequest(BaseModel):
     skill_id: str
     is_correct: StrictBool
+
+
+def count_recent_attempts(db: Session, student_id: str, now: datetime | None = None) -> int:
+    """Number of attempts for a student in the last 24h (window inclusive).
+
+    `now` is injectable so tests can check the exact window boundary
+    deterministically; production uses the real clock.
+    """
+    cutoff = (now or datetime.now(timezone.utc)) - RATE_LIMIT_WINDOW
+    return db.scalar(
+        select(func.count())
+        .select_from(Attempt)
+        .where(
+            Attempt.student_id == student_id,
+            Attempt.created_at >= cutoff,
+        )
+    ) or 0
 
 
 @app.get("/health")
@@ -69,6 +92,12 @@ def submit_attempt(
 
     if payload.skill_id not in SKILL_IDS:
         raise HTTPException(status_code=422, detail="Unknown skill_id")
+
+    if count_recent_attempts(db, student_id) >= RATE_LIMIT_ATTEMPTS:
+        raise HTTPException(
+            status_code=429,
+            detail="Attempt limit reached: 30 per rolling 24 hours",
+        )
 
     mastery = db.get(Mastery, (student_id, payload.skill_id))
     if mastery is None:
