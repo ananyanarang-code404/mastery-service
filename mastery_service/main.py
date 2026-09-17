@@ -42,7 +42,7 @@ from pydantic import BaseModel, StrictBool
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from mastery_service.access import authorize_student_self, resolve_identity
+from mastery_service.access import authorize_read_access, authorize_student_self, resolve_identity
 from mastery_service.ai_feedback import AIFeedbackError, get_ai_feedback
 from mastery_service.db import Attempt, Mastery, Notification, get_db
 from mastery_service.mastery import apply_attempt
@@ -150,6 +150,41 @@ def submit_attempt(
     }
 
 
-# TODO: POST /students/{student_id}/attempts
-# TODO: GET /students/{student_id}/mastery
-# TODO: GET /notifications/{student_id}
+@app.get("/students/{student_id}/mastery")
+def get_mastery(
+    student_id: str,
+    db: Session = Depends(get_db),
+    authorization: str = Header(""),
+):
+    identity = resolve_identity(authorization)
+    authorize_read_access(identity, student_id)
+    rows = db.execute(
+        select(Mastery)
+        .where(Mastery.student_id == student_id)
+        .order_by(Mastery.skill_id)
+    ).scalars().all()
+    return [{"skill_id": row.skill_id, "score": row.score} for row in rows]
+
+
+@app.get("/notifications/{student_id}")
+def get_notifications(
+    student_id: str,
+    db: Session = Depends(get_db),
+    authorization: str = Header(""),
+):
+    identity = resolve_identity(authorization)
+    authorize_read_access(identity, student_id)
+    rows = db.execute(
+        select(Notification)
+        .where(Notification.student_id == student_id)
+        .order_by(Notification.created_at.desc(), Notification.id.desc())
+    ).scalars().all()
+    return [
+        {
+            "id": row.id,
+            "skill_id": row.skill_id,
+            "message": row.message,
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]
