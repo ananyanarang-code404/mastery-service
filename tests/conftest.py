@@ -21,6 +21,17 @@ def _fast_ai_feedback(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _no_production_create_tables(monkeypatch):
+    """Tests build their own in-memory schemas, so the app-lifespan hook that
+    creates the production mastery.db (db.create_tables) must not run here —
+    otherwise every test would touch the real SQLite file.
+    """
+    import mastery_service.main as main_module
+
+    monkeypatch.setattr(main_module, "create_tables", lambda: None)
+
+
 @pytest.fixture()
 def db_engine():
     engine = create_engine(

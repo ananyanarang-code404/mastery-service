@@ -17,7 +17,7 @@ pip install -e .
 uvicorn mastery_service.main:app --reload
 ```
 
-Then visit http://127.0 .0.1:8000/docs for the interactive API explorer.
+Then visit http://127.0.0.1:8000/docs for the interactive API explorer.
 
 ## Test
 

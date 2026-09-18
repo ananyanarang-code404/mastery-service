@@ -1,39 +1,18 @@
+"""GenEd Skill Mastery Tracker — FastAPI service.
+
+Endpoints:
+  POST /students/{student_id}/attempts   submit a practice attempt
+  GET  /students/{student_id}/mastery     current mastery per skill
+  GET  /notifications/{student_id}        recorded milestone notifications
+
+Auth is the given bearer-token map in seed_data.TOKENS: students act only on
+their own data, teachers only on students in their own roster. The attempt
+is persisted (and mastery updated, milestone recorded) BEFORE the slow and
+flaky AI feedback call, so an AI failure never loses the attempt. Tables are
+created on app startup (db.create_tables); storage is file-backed SQLite.
 """
-STARTER FILE — build the actual service here (or restructure into more
-files/modules if you prefer; this single-file skeleton is just a starting
-point, not a requirement).
 
-See PROBLEM.md for the full spec. Summary of what needs to exist by the end:
-
-  POST /students/{student_id}/attempts
-      Body: {"skill_id": str, "is_correct": bool}
-      - Only the student themselves may submit their own attempts.
-      - Updates that student's mastery score (0-100) for that skill using a
-        scoring approach YOU design and justify in WRITEUP.md.
-      - Calls get_ai_feedback() (see ai_feedback.py) to get a feedback
-        string for the response. That call is slow and sometimes fails —
-        your endpoint must still behave well when it does.
-      - Enforces: max 30 attempts per student per rolling 24h. A request
-        that fails validation (bad skill_id, malformed body, etc.) must NOT
-        count against that limit.
-      - If this attempt takes the student's mastery for that skill above 80
-        for the first time, a milestone notification must be durably
-        recorded — including surviving a crash between "mastery updated"
-        and "notification recorded."
-
-  GET /students/{student_id}/mastery
-      - A student may view their own mastery.
-      - A teacher may view mastery for any student on their own roster
-        (see seed_data.TEACHER_ROSTERS), and no one else's.
-      - Returns current mastery per skill for that student.
-
-  GET /notifications/{student_id}
-      - Same access rule as above. Returns the milestone notifications
-        recorded for that student.
-
-Everything below this docstring is scaffolding, not a solution — feel free
-to delete, restructure, or heavily rewrite it.
-"""
+from contextlib import asynccontextmanager
 
 from datetime import datetime, timedelta, timezone
 
@@ -44,11 +23,18 @@ from sqlalchemy.orm import Session
 
 from mastery_service.access import authorize_read_access, authorize_student_self, resolve_identity
 from mastery_service.ai_feedback import AIFeedbackError, get_ai_feedback
-from mastery_service.db import Attempt, Mastery, Notification, get_db
+from mastery_service.db import Attempt, Mastery, Notification, create_tables, get_db
 from mastery_service.mastery import apply_attempt
 from mastery_service.seed_data import SKILL_IDS
 
-app = FastAPI(title="GenEd Mastery Service — Take-Home")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_tables()
+    yield
+
+
+app = FastAPI(title="GenEd Mastery Service — Take-Home", lifespan=lifespan)
 
 RATE_LIMIT_ATTEMPTS = 30
 RATE_LIMIT_WINDOW = timedelta(hours=24)
