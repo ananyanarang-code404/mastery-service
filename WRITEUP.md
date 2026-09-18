@@ -12,44 +12,6 @@ What formula/approach did you use to turn a sequence of correct/incorrect
 attempts into a 0-100 mastery score? Why this one, and what does it get
 wrong that a better version would fix?
 
-## 2. The flaky AI dependency
-
-How does your `/attempts` endpoint behave when `get_ai_feedback` is slow?
-When it raises `AIFeedbackError`? What would a student actually see in each
-case?
-
-## 3. The crash-durability requirement
-
-Walk through what happens, step by step, if the process crashes right after
-a student's mastery crosses 80 for a skill but before the milestone
-notification is recorded. What guarantees does your design actually give,
-and what would you still worry about?
-
-## 4. Rate limiting
-
-How does your 30-attempts/24h limit work? What happens right at the
-boundary (attempt #30, attempt #31, a request that fails validation)?
-
-## 5. If you had another 3 days
-
-What would you build or fix next, in priority order?
-
-## 6. Least confident about
-
-Which part of this submission are you least sure is correct or
-well-designed? (This isn't a trick question — we'd rather you tell us than
-we find out later.)
-
-## 7. AI tool use
-
-Which parts, if any, did you use an AI coding assistant for? What did you
-have to fix, reject, or rework from what it gave you?
-
-
-
-
-1. Mastery scoring
-
 I used an Exponential Moving Average (EMA) with α = 0.2 for the mastery score.
 
 For every attempt, the score moves a little towards 100 if the answer is correct and towards 0 if it is wrong:
@@ -62,7 +24,12 @@ I chose EMA because I wanted recent attempts to have more effect on the score wi
 
 One limitation is that the score does not have any time-based decay. So if a student reaches a high score and then stops practicing, the score will still remain high. If I had more time, I would add a decay mechanism for skills that have not been practiced for some time.
 
-2. The flaky AI dependency
+
+## 2. The flaky AI dependency
+
+How does your `/attempts` endpoint behave when `get_ai_feedback` is slow?
+When it raises `AIFeedbackError`? What would a student actually see in each
+case?
 
 I treated the attempt and mastery update as the important part, and the AI feedback as an additional feature.
 
@@ -74,7 +41,13 @@ This also means that an AI failure does not undo the mastery update, consume the
 
 I chose this approach because I felt the student's submitted attempt should not depend on whether the external AI service happens to be available at that moment.
 
-3. The crash-durability requirement
+
+## 3. The crash-durability requirement
+
+Walk through what happens, step by step, if the process crashes right after
+a student's mastery crosses 80 for a skill but before the milestone
+notification is recorded. What guarantees does your design actually give,
+and what would you still worry about?
 
 For the milestone requirement, I wanted the attempt, mastery update, and notification to be part of the same database transaction.
 
@@ -86,7 +59,10 @@ I added tests for this as well. One test simulates a failure before the transact
 
 I also keep a milestone_notified flag for each student/skill. This makes the milestone a first-time event: if the score goes above 80, then later falls below it and crosses 80 again, another notification is not created.
 
-4. Rate limiting
+## 4. Rate limiting
+
+How does your 30-attempts/24h limit work? What happens right at the
+boundary (attempt #30, attempt #31, a request that fails validation)?
 
 I implemented the limit as 30 attempts per student in a rolling 24-hour window, across all skills.
 
@@ -98,7 +74,9 @@ The rate limit is based on submitted attempts, so an attempt still counts even i
 
 I also added tests around the 30/31 boundary and invalid requests at the limit.
 
-5. If I had another 3 days
+## 5. If you had another 3 days
+
+What would you build or fix next, in priority order?
 
 If I had three more days, I would focus on:
 
@@ -110,7 +88,11 @@ Better scoring — support partial credit instead of only correct/incorrect atte
 
 I would prioritize these based on whether the service was going to remain a small local service or be used by multiple users in production.
 
-6. Least confident about
+## 6. Least confident about
+
+Which part of this submission are you least sure is correct or
+well-designed? (This isn't a trick question — we'd rather you tell us than
+we find out later.)
 
 The area I'm least confident about is concurrency at a larger scale.
 
@@ -118,10 +100,12 @@ For the current assignment, I designed and tested the service around a single-pr
 
 I would be comfortable explaining and defending the current implementation, but if this were being moved to a larger production setup, concurrency is the first area I would investigate further.
 
-7. AI tool use
 
-I used GitHub Copilot to help me understand the starter repository and break the assignment into smaller phases. I then reviewed the proposed approach, made decisions about the implementation, and implemented and tested each phase separately.
+## 7. AI tool use
 
-I also used ChatGPT and GitHub Copilot for additional tests. After implementing the main requirements, I used them to identify edge cases and add tests around things such as the rate-limit boundary, invalid requests not consuming the quota, flaky AI behavior, milestone re-crossing, crash-before-commit behavior, and database state after a restart.
+Which parts, if any, did you use an AI coding assistant for? What did you
+have to fix, reject, or rework from what it gave you?
 
-The additional testing helped me check cases beyond the basic successful request flow, particularly around failure and boundary conditions.
+I used GitHub Copilot and OpenCode during development to help me understand the starter repository, break the assignment into smaller phases, and work through the implementation. I reviewed the proposed approaches, made the implementation decisions, and implemented and tested each phase separately.
+
+I used an AI coding assistant throughout the implementation for debugging, code review, and identifying edge cases. It helped identify issues such as create_tables() not being connected to FastAPI startup, the non-atomic rate-limit check allowing concurrent requests to exceed the limit, and the second database commit potentially returning 500 after an attempt was already recorded. I reviewed and verified these findings against the requirements and tests, rather than accepting the AI output blindly.
