@@ -16,7 +16,8 @@ from contextlib import asynccontextmanager
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, StrictBool
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -39,6 +40,19 @@ app = FastAPI(title="GenEd Mastery Service — Take-Home", lifespan=lifespan)
 RATE_LIMIT_ATTEMPTS = 30
 RATE_LIMIT_WINDOW = timedelta(hours=24)
 FALLBACK_AI_MESSAGE = "We couldn't generate personalized feedback for this attempt — keep practicing!"
+
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def get_identity(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> dict:
+    """Resolve the Bearer token from the request into an identity dict.
+
+    auto_error=False keeps HTTPBearer from raising its own 403 for a missing
+    or malformed header, so resolve_identity() still returns our existing 401.
+    """
+    return resolve_identity(credentials.credentials if credentials else "")
 
 
 class AttemptRequest(BaseModel):
@@ -73,9 +87,8 @@ def submit_attempt(
     student_id: str,
     payload: AttemptRequest,
     db: Session = Depends(get_db),
-    authorization: str = Header(default=""),
+    identity: dict = Depends(get_identity),
 ) -> dict:
-    identity = resolve_identity(authorization)
     authorize_student_self(identity, student_id)
 
     if payload.skill_id not in SKILL_IDS:
@@ -140,9 +153,8 @@ def submit_attempt(
 def get_mastery(
     student_id: str,
     db: Session = Depends(get_db),
-    authorization: str = Header(""),
+    identity: dict = Depends(get_identity),
 ):
-    identity = resolve_identity(authorization)
     authorize_read_access(identity, student_id)
     rows = db.execute(
         select(Mastery)
@@ -156,9 +168,8 @@ def get_mastery(
 def get_notifications(
     student_id: str,
     db: Session = Depends(get_db),
-    authorization: str = Header(""),
+    identity: dict = Depends(get_identity),
 ):
-    identity = resolve_identity(authorization)
     authorize_read_access(identity, student_id)
     rows = db.execute(
         select(Notification)
